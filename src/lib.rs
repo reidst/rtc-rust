@@ -566,8 +566,8 @@ pub mod canvas {
 pub mod matrix {
     use std::cmp::PartialEq;
     use std::ops::Mul;
-    use crate::tuple::Tuple;
 
+    use super::tuple::Tuple;
     use super::equal;
 
     fn bounds_check(r: usize, c: usize, size: usize) {
@@ -682,13 +682,6 @@ pub mod matrix {
         data: [[f64; 4]; 4],
     }
 
-    const IDENTITY: Matrix4x4 = Matrix4x4 { data: [
-        [1., 0., 0., 0.],
-        [0., 1., 0., 0.],
-        [0., 0., 1., 0.],
-        [0., 0., 0., 1.],
-    ]};
-
     impl PartialEq<Matrix4x4> for Matrix4x4 {
         fn eq(&self, other: &Matrix4x4) -> bool {
             for r in 0..4 {
@@ -744,6 +737,15 @@ pub mod matrix {
                 data[i / 4][i % 4] = v;
             }
             Matrix4x4 { data }
+        }
+
+        pub fn identity() -> Self {
+            Matrix4x4 { data: [
+                [1., 0., 0., 0.],
+                [0., 1., 0., 0.],
+                [0., 0., 1., 0.],
+                [0., 0., 0., 1.],
+            ]}
         }
 
         pub fn get(&self, r: usize, c: usize) -> f64 {
@@ -937,7 +939,7 @@ pub mod matrix {
                 2., 4.,  8., 16.,
                 4., 8., 16., 32.,
             ]);
-            assert_eq!(a * IDENTITY, a);
+            assert_eq!(a * Matrix4x4::identity(), a);
         }
 
         #[test]
@@ -958,8 +960,8 @@ pub mod matrix {
 
         #[test]
         fn test_transpose_identity_matrix() {
-            let a = IDENTITY.transpose();
-            assert_eq!(a, IDENTITY);
+            let a = Matrix4x4::identity().transpose();
+            assert_eq!(a, Matrix4x4::identity());
         }
 
         #[test]
@@ -1146,6 +1148,287 @@ pub mod matrix {
             ]);
             let c = a * b;
             assert_eq!(c * b.inverse(), a);
+        }
+    }
+}
+
+pub mod transformation {
+    use std::ops::Mul;
+    use super::tuple::Tuple;
+    use super::matrix::Matrix4x4;
+
+    #[derive(Debug, Copy, Clone)]
+    pub struct Transform {
+        mat: Matrix4x4,
+    }
+
+    impl Mul<Tuple> for Transform {
+        type Output = Tuple;
+
+        fn mul(self, rhs: Tuple) -> Self::Output {
+            self.mat * rhs
+        }
+    }
+
+    impl Mul<Transform> for Transform {
+        type Output = Transform;
+
+        fn mul(self, rhs: Transform) -> Self::Output {
+            Transform { mat: self.mat * rhs.mat }
+        }
+    }
+
+    impl Transform {
+        pub fn identity() -> Self {
+            Transform { mat: Matrix4x4::identity() }
+        }
+
+        pub fn translation(x: f64, y: f64, z: f64) -> Self {
+            Transform { mat: Matrix4x4::new([
+                1., 0., 0.,  x,
+                0., 1., 0.,  y,
+                0., 0., 1.,  z,
+                0., 0., 0., 1.,
+            ]) }
+        }
+
+        pub fn scaling(x: f64, y: f64, z: f64) -> Self {
+            Transform { mat: Matrix4x4::new([
+                 x, 0., 0., 0.,
+                0.,  y, 0., 0.,
+                0., 0.,  z, 0.,
+                0., 0., 0., 1.,
+            ]) }
+        }
+
+        pub fn rotation_x(rad: f64) -> Self {
+            Transform { mat: Matrix4x4::new([
+                1.,        0.,         0., 0.,
+                0., rad.cos(), -rad.sin(), 0.,
+                0., rad.sin(),  rad.cos(), 0.,
+                0.,        0.,         0., 1.,
+            ]) }
+        }
+
+        pub fn rotation_y(rad: f64) -> Self {
+            Transform { mat: Matrix4x4::new([
+                 rad.cos(), 0., rad.sin(), 0.,
+                        0., 1.,        0., 0.,
+                -rad.sin(), 0., rad.cos(), 0.,
+                        0., 0.,        0., 1.,
+            ]) }
+        }
+
+        pub fn rotation_z(rad: f64) -> Self {
+            Transform { mat: Matrix4x4::new([
+                rad.cos(), -rad.sin(), 0., 0.,
+                rad.sin(),  rad.cos(), 0., 0.,
+                       0.,         0., 1., 0.,
+                       0.,         0., 0., 1.,
+            ]) }
+        }
+
+        pub fn shearing(xy: f64, xz: f64, yx: f64, yz: f64, zx: f64, zy: f64) -> Self {
+            Transform { mat: Matrix4x4::new([
+                1., xy, xz, 0.,
+                yx, 1., yz, 0.,
+                zx, zy, 1., 0.,
+                0., 0., 0., 1.,
+            ]) }
+        }
+
+        pub fn inverse(&self) -> Self {
+            Transform { mat: self.mat.inverse() }
+        }
+
+        // in-place variants of transformations for functional chaining
+
+        pub fn translation_ip(self, x: f64, y: f64, z: f64) -> Self {
+            self * Transform::translation(x, y, z)
+        }
+
+        pub fn scaling_ip(self, x: f64, y: f64, z: f64) -> Self {
+            self * Transform::scaling(x, y, z)
+        }
+
+        pub fn rotation_x_ip(self, rad: f64) -> Self {
+            self * Transform::rotation_x(rad)
+        }
+
+        pub fn rotation_y_ip(self, rad: f64) -> Self {
+            self * Transform::rotation_y(rad)
+        }
+
+        pub fn rotation_z_ip(self, rad: f64) -> Self {
+            self * Transform::rotation_z(rad)
+        }
+
+        pub fn shearing_ip(self, xy: f64, xz: f64, yx: f64, yz: f64, zx: f64, zy: f64) -> Self {
+            self * Transform::shearing(xy, xz, yx, yz, zx, zy)
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::tuple::Tuple;
+
+        const PI: f64 = std::f64::consts::PI;
+        const SQRT_2: f64 = std::f64::consts::SQRT_2;
+
+        #[test]
+        fn test_translate_point() {
+            let transform = Transform::translation(5., -3., 2.);
+            let p = Tuple::point(-3., 4., 5.);
+            assert_eq!(transform * p, Tuple::point(2., 1., 7.));
+        }
+
+        #[test]
+        fn test_inverse_translation() {
+            let transform = Transform::translation(5., -3., 2.);
+            let inv = transform.inverse();
+            let p = Tuple::point(-3., 4., 5.);
+            assert_eq!(inv * p, Tuple::point(-8., 7., 3.));
+        }
+
+        #[test]
+        fn test_translation_not_affect_vectors() {
+            let transform = Transform::translation(5., -3., 2.);
+            let v = Tuple::vector(-3., 4., 5.);
+            assert_eq!(transform * v, v);
+        }
+
+        #[test]
+        fn test_scale_point() {
+            let transform = Transform::scaling(2., 3., 4.);
+            let p = Tuple::point(-4., 6., 8.);
+            assert_eq!(transform * p, Tuple::point(-8., 18., 32.));
+        }
+
+        #[test]
+        fn test_scale_vector() {
+            let transform = Transform::scaling(2., 3., 4.);
+            let v = Tuple::vector(-4., 6., 8.);
+            assert_eq!(transform * v, Tuple::vector(-8., 18., 32.));
+        }
+
+        #[test]
+        fn test_multiply_by_scaling_inverse() {
+            let transform = Transform::scaling(2., 3., 4.);
+            let inv = transform.inverse();
+            let v = Tuple::vector(-4., 6., 8.);
+            assert_eq!(inv * v, Tuple::vector(-2., 2., 2.));
+        }
+
+        #[test]
+        fn test_reflection_as_negative_scaling() {
+            let transform = Transform::scaling(-1., 1., 1.);
+            let p = Tuple::point(2., 3., 4.);
+            assert_eq!(transform * p, Tuple::point(-2., 3., 4.));
+        }
+
+        #[test]
+        fn test_rotation_x() {
+            let p = Tuple::point(0., 1., 0.);
+            let half_quarter = Transform::rotation_x(PI / 4.);
+            let full_quarter = Transform::rotation_x(PI / 2.);
+            assert_eq!(half_quarter * p, Tuple::point(0., SQRT_2 / 2., SQRT_2 / 2.));
+            assert_eq!(full_quarter * p, Tuple::point(0., 0., 1.));
+        }
+
+        #[test]
+        fn test_inverse_rotation_x() {
+            let p = Tuple::point(0., 1., 0.);
+            let half_quarter = Transform::rotation_x(PI / 4.);
+            let inv = half_quarter.inverse();
+            assert_eq!(inv * p, Tuple::point(0., SQRT_2 / 2., -SQRT_2 / 2.));
+        }
+
+        #[test]
+        fn test_rotation_y() {
+            let p = Tuple::point(0., 0., 1.);
+            let half_quarter = Transform::rotation_y(PI / 4.);
+            let full_quarter = Transform::rotation_y(PI / 2.);
+            assert_eq!(half_quarter * p, Tuple::point(SQRT_2 / 2., 0., SQRT_2 / 2.));
+            assert_eq!(full_quarter * p, Tuple::point(1., 0., 0.));
+        }
+
+        #[test]
+        fn test_rotation_z() {
+            let p = Tuple::point(0., 1., 0.);
+            let half_quarter = Transform::rotation_z(PI / 4.);
+            let full_quarter = Transform::rotation_z(PI / 2.);
+            assert_eq!(half_quarter * p, Tuple::point(-SQRT_2 / 2., SQRT_2 / 2., 0.));
+            assert_eq!(full_quarter * p, Tuple::point(-1., 0., 0.));
+        }
+
+        #[test]
+        fn test_shear_xy() {
+            let transform = Transform::shearing(1., 0., 0., 0., 0., 0.);
+            let p = Tuple::point(2., 3., 4.);
+            assert_eq!(transform * p, Tuple::point(5., 3., 4.));
+        }
+
+        #[test]
+        fn test_shear_xz() {
+            let transform = Transform::shearing(0., 1., 0., 0., 0., 0.);
+            let p = Tuple::point(2., 3., 4.);
+            assert_eq!(transform * p, Tuple::point(6., 3., 4.));
+        }
+
+        #[test]
+        fn test_shear_yx() {
+            let transform = Transform::shearing(0., 0., 1., 0., 0., 0.);
+            let p = Tuple::point(2., 3., 4.);
+            assert_eq!(transform * p, Tuple::point(2., 5., 4.));
+        }
+
+        #[test]
+        fn test_shear_yz() {
+            let transform = Transform::shearing(0., 0., 0., 1., 0., 0.);
+            let p = Tuple::point(2., 3., 4.);
+            assert_eq!(transform * p, Tuple::point(2., 7., 4.));
+        }
+
+        #[test]
+        fn test_shear_zx() {
+            let transform = Transform::shearing(0., 0., 0., 0., 1., 0.);
+            let p = Tuple::point(2., 3., 4.);
+            assert_eq!(transform * p, Tuple::point(2., 3., 6.));
+        }
+
+        #[test]
+        fn test_shear_zy() {
+            let transform = Transform::shearing(0., 0., 0., 0., 0., 1.);
+            let p = Tuple::point(2., 3., 4.);
+            assert_eq!(transform * p, Tuple::point(2., 3., 7.));
+        }
+
+        #[test]
+        fn test_apply_transforms_in_sequence() {
+            let p = Tuple::point(1., 0., 1.);
+            let a = Transform::rotation_x(PI / 2.);
+            let b = Transform::scaling(5., 5., 5.);
+            let c = Transform::translation(10., 5., 7.);
+            // apply rotation first
+            let p2 = a * p;
+            assert_eq!(p2, Tuple::point(1., -1., 0.));
+            // then apply scaling
+            let p3 = b * p2;
+            assert_eq!(p3, Tuple::point(5., -5., 0.));
+            // then apply translation
+            let p4 = c * p3;
+            assert_eq!(p4, Tuple::point(15., 0., 7.));
+        }
+
+        #[test]
+        fn test_apply_transforms_in_reversed_chain() {
+            let p = Tuple::point(1., 0., 1.);
+            let a = Transform::rotation_x(PI / 2.);
+            let b = Transform::scaling(5., 5., 5.);
+            let c = Transform::translation(10., 5., 7.);
+            let t = c * b * a;
+            assert_eq!(t * p, Tuple::point(15., 0., 7.));
         }
     }
 }
