@@ -570,6 +570,12 @@ pub mod matrix {
 
     use super::equal;
 
+    fn bounds_check(r: usize, c: usize, size: usize) {
+        if r >= size || c >= size {
+            panic!("a Matrix{size}x{size} was indexed at [{r},{c}]");
+        }
+    }
+
     #[derive(Debug, Copy, Clone)]
     pub struct Matrix2x2 {
         data: [[f64; 2]; 2],
@@ -592,12 +598,9 @@ pub mod matrix {
             ] }
         }
 
-        pub fn get(&self, row: usize, col: usize) -> Option<f64> {
-            if (0..2).contains(&row) && (0..2).contains(&col) {
-                Some(self.data[row][col])
-            } else {
-                None
-            }
+        pub fn get(&self, r: usize, c: usize) -> f64 {
+            bounds_check(r, c, 2);
+            self.data[r][c]
         }
 
         pub fn determinant(&self) -> f64 {
@@ -633,34 +636,44 @@ pub mod matrix {
             Matrix3x3 { data }
         }
 
-        pub fn get(&self, row: usize, col: usize) -> Option<f64> {
-            if (0..3).contains(&row) && (0..3).contains(&col) {
-                Some(self.data[row][col])
-            } else {
-                None
-            }
+        pub fn get(&self, r: usize, c: usize) -> f64 {
+            bounds_check(r, c, 3);
+            self.data[r][c]
         }
 
-        pub fn submatrix(&self, r: usize, c: usize) -> Option<Matrix2x2> {
-            if (0..3).contains(&r) && (0..3).contains(&c) {
-                let mut out = Matrix2x2::new([0.; 4]);
-                for row in 0..3 {
-                    if row == r { continue }
-                    let target_row = if row < r { row } else { row - 1 };
-                    for col in 0..3 {
-                        if col == c { continue }
-                        let target_col = if col < c { col } else { col - 1 };
-                        out.data[target_row][target_col] = self.data[row][col];
-                    }
+        pub fn submatrix(&self, r: usize, c: usize) -> Matrix2x2 {
+            bounds_check(r, c, 3);
+            let mut out = Matrix2x2::new([0.; 4]);
+            for row in 0..3 {
+                if row == r { continue }
+                let target_row = if row < r { row } else { row - 1 };
+                for col in 0..3 {
+                    if col == c { continue }
+                    let target_col = if col < c { col } else { col - 1 };
+                    out.data[target_row][target_col] = self.data[row][col];
                 }
-                Some(out)
+            }
+            out
+        }
+
+        pub fn minor(&self, r: usize, c: usize) -> f64 {
+            bounds_check(r, c, 3);
+            self.submatrix(r, c).determinant()
+        }
+
+        pub fn cofactor(&self, r: usize, c: usize) -> f64 {
+            bounds_check(r, c, 3);
+            if (r + c) % 2 == 1 {
+                -self.minor(r, c)
             } else {
-                None
+                self.minor(r, c)
             }
         }
 
-        pub fn minor(&self, r: usize, c: usize) -> Option<f64> {
-            self.submatrix(r, c).and_then(|sub| Some(sub.determinant()))
+        pub fn determinant(&self) -> f64 {
+            self.data[0][0] * self.cofactor(0, 0) +
+            self.data[0][1] * self.cofactor(0, 1) +
+            self.data[0][2] * self.cofactor(0, 2)
         }
     }
 
@@ -733,12 +746,9 @@ pub mod matrix {
             Matrix4x4 { data }
         }
 
-        pub fn get(&self, row: usize, col: usize) -> Option<f64> {
-            if (0..4).contains(&row) && (0..4).contains(&col) {
-                Some(self.data[row][col])
-            } else {
-                None
-            }
+        pub fn get(&self, r: usize, c: usize) -> f64 {
+            bounds_check(r, c, 4);
+            self.data[r][c]
         }
 
         pub fn transpose(&self) -> Matrix4x4 {
@@ -751,22 +761,56 @@ pub mod matrix {
             Matrix4x4 { data }
         }
 
-        pub fn submatrix(&self, r: usize, c: usize) -> Option<Matrix3x3> {
-            if (0..4).contains(&r) && (0..4).contains(&c) {
-                let mut out = Matrix3x3::new([0.; 9]);
-                for row in 0..4 {
-                    if row == r { continue }
-                    let target_row = if row < r { row } else { row - 1 };
-                    for col in 0..4 {
-                        if col == c { continue }
-                        let target_col = if col < c { col } else { col - 1 };
-                        out.data[target_row][target_col] = self.data[row][col];
-                    }
+        pub fn submatrix(&self, r: usize, c: usize) -> Matrix3x3 {
+            bounds_check(r, c, 4);
+            let mut out = Matrix3x3::new([0.; 9]);
+            for row in 0..4 {
+                if row == r { continue }
+                let target_row = if row < r { row } else { row - 1 };
+                for col in 0..4 {
+                    if col == c { continue }
+                    let target_col = if col < c { col } else { col - 1 };
+                    out.data[target_row][target_col] = self.data[row][col];
                 }
-                Some(out)
-            } else {
-                None
             }
+            out
+        }
+
+        pub fn minor(&self, r: usize, c: usize) -> f64 {
+            bounds_check(r, c, 4);
+            self.submatrix(r, c).determinant()
+        }
+
+        pub fn cofactor(&self, r: usize, c: usize) -> f64 {
+            bounds_check(r, c, 4);
+            if (r + c) % 2 == 1 {
+                -self.minor(r, c)
+            } else {
+                self.minor(r, c)
+            }
+        }
+
+        pub fn determinant(&self) -> f64 {
+            self.data[0][0] * self.cofactor(0, 0) +
+            self.data[0][1] * self.cofactor(0, 1) +
+            self.data[0][2] * self.cofactor(0, 2) +
+            self.data[0][3] * self.cofactor(0, 3)
+        }
+
+        pub fn invertible(&self) -> bool {
+            self.determinant() != 0.
+        }
+
+        pub fn inverse(&self) -> Matrix4x4 {
+            if !self.invertible() { panic!("Tried to invert a non-invertible matrix") }
+            let det = self.determinant();
+            let mut out = [0.; 16];
+            for row in 0..4 {
+                for col in 0..4 {
+                    out[col * 4 + row] = self.cofactor(row, col) / det;
+                }
+            }
+            Matrix4x4::new(out)
         }
     }
 
@@ -784,13 +828,13 @@ pub mod matrix {
                  9.,  10.,  11.,  12.,
                 13.5, 14.5, 15.5, 16.5,
             ]);
-            assert_eq!(m.get(0, 0), Some(1.));
-            assert_eq!(m.get(0, 3), Some(4.));
-            assert_eq!(m.get(1, 0), Some(5.5));
-            assert_eq!(m.get(1, 2), Some(7.5));
-            assert_eq!(m.get(2, 2), Some(11.));
-            assert_eq!(m.get(3, 0), Some(13.5));
-            assert_eq!(m.get(3, 2), Some(15.5));
+            assert_eq!(m.get(0, 0), 1.);
+            assert_eq!(m.get(0, 3), 4.);
+            assert_eq!(m.get(1, 0), 5.5);
+            assert_eq!(m.get(1, 2), 7.5);
+            assert_eq!(m.get(2, 2), 11.);
+            assert_eq!(m.get(3, 0), 13.5);
+            assert_eq!(m.get(3, 2), 15.5);
         }
 
         #[test]
@@ -799,10 +843,10 @@ pub mod matrix {
                 -3.,  5.,
                  1., -2.,
             ]);
-            assert_eq!(m.get(0, 0), Some(-3.));
-            assert_eq!(m.get(0, 1), Some(5.));
-            assert_eq!(m.get(1, 0), Some(1.));
-            assert_eq!(m.get(1, 1), Some(-2.));
+            assert_eq!(m.get(0, 0), -3.);
+            assert_eq!(m.get(0, 1), 5.);
+            assert_eq!(m.get(1, 0), 1.);
+            assert_eq!(m.get(1, 1), -2.);
         }
 
         #[test]
@@ -812,9 +856,9 @@ pub mod matrix {
                  1., -2., -7.,
                  0.,  1.,  1.,
             ]);
-            assert_eq!(m.get(0, 0), Some(-3.));
-            assert_eq!(m.get(1, 1), Some(-2.));
-            assert_eq!(m.get(2, 2), Some(1.));
+            assert_eq!(m.get(0, 0), -3.);
+            assert_eq!(m.get(1, 1), -2.);
+            assert_eq!(m.get(2, 2), 1.);
         }
 
         #[test]
@@ -934,10 +978,10 @@ pub mod matrix {
                 -3., 2.,  7.,
                  0., 6., -3.,
             ]);
-            assert_eq!(a.submatrix(0, 2), Some(Matrix2x2::new([
+            assert_eq!(a.submatrix(0, 2), Matrix2x2::new([
                 -3., 2.,
                  0., 6.,
-            ])));
+            ]));
         }
 
         #[test]
@@ -948,11 +992,11 @@ pub mod matrix {
                 -1., 0.,  8., 2.,
                 -7., 1., -1., 1.,
             ]);
-            assert_eq!(a.submatrix(2, 1), Some(Matrix3x3::new([
+            assert_eq!(a.submatrix(2, 1), Matrix3x3::new([
                 -6.,  1., 6.,
                 -8.,  8., 6.,
                 -7., -1., 1.,
-            ])));
+            ]));
         }
 
         #[test]
@@ -962,13 +1006,146 @@ pub mod matrix {
                 2., -1., -7.,
                 6., -1.,  5.,
             ]);
-            // let Some(b) = a.submatrix(1, 0);
-            let b = match a.submatrix(1, 0) {
-                Some(sub) => sub,
-                None => panic!("a.submatrix(1, 0) should exist but does not")
-            };
+            let b = a.submatrix(1, 0);
             assert_eq!(b.determinant(), 25.);
-            assert_eq!(a.minor(1, 0), Some(25.));
+            assert_eq!(a.minor(1, 0), 25.);
+        }
+
+        #[test]
+        fn test_cofactor3() {
+            let a = Matrix3x3::new([
+                3.,  5.,  0.,
+                2., -1., -7.,
+                6., -1.,  5.,
+            ]);
+            assert_eq!(a.minor(0, 0), -12.);
+            assert_eq!(a.cofactor(0, 0), -12.);
+            assert_eq!(a.minor(1, 0), 25.);
+            assert_eq!(a.cofactor(1, 0), -25.);
+        }
+
+        #[test]
+        fn test_determinant3() {
+            let a = Matrix3x3::new([
+                 1., 2.,  6.,
+                -5., 8., -4.,
+                 2., 6.,  4.,
+            ]);
+            assert_eq!(a.cofactor(0, 0), 56.);
+            assert_eq!(a.cofactor(0, 1), 12.);
+            assert_eq!(a.cofactor(0, 2), -46.);
+            assert_eq!(a.determinant(), -196.);
+        }
+
+        #[test]
+        fn test_determinant4() {
+            let a = Matrix4x4::new([
+                -2., -8.,  3.,  5.,
+                -3.,  1.,  7.,  3.,
+                 1.,  2., -9.,  6.,
+                -6.,  7.,  7., -9.,
+            ]);
+            assert_eq!(a.cofactor(0, 0), 690.);
+            assert_eq!(a.cofactor(0, 1), 447.);
+            assert_eq!(a.cofactor(0, 2), 210.);
+            assert_eq!(a.cofactor(0, 3), 51.);
+            assert_eq!(a.determinant(), -4071.);
+        }
+
+        #[test]
+        fn test_invertible() {
+            let a = Matrix4x4::new([
+                6.,  4., 4.,  4.,
+                5.,  5., 7.,  6.,
+                4., -9., 3., -7.,
+                9.,  1., 7., -6.,
+            ]);
+            assert_eq!(a.determinant(), -2120.);
+            assert!(a.invertible());
+        }
+
+        #[test]
+        fn test_noninvertible() {
+            let a = Matrix4x4::new([
+                -4.,  2., -2., -3.,
+                 9.,  6.,  2.,  6.,
+                 0., -5.,  1., -5.,
+                 0.,  0.,  0.,  0.,
+            ]);
+            assert_eq!(a.determinant(), 0.);
+            assert!(!a.invertible());
+        }
+
+        #[test]
+        fn test_invert_matrix1() {
+            let a = Matrix4x4::new([
+                -5.,  2.,  6., -8.,
+                 1., -5.,  1.,  8.,
+                 7.,  7., -6., -7.,
+                 1., -3.,  7.,  4.,
+            ]);
+            let b = a.inverse();
+            assert_eq!(a.determinant(), 532.);
+            assert_eq!(a.cofactor(2, 3), -160.);
+            assert_eq!(b.get(3, 2), -160. / 532.);
+            assert_eq!(a.cofactor(3, 2), 105.);
+            assert_eq!(b.get(2, 3), 105. / 532.);
+            assert_eq!(b, Matrix4x4::new([
+                 0.21805,  0.45113,  0.24060, -0.04511,
+                -0.80827, -1.45677, -0.44361,  0.52068,
+                -0.07895, -0.22368, -0.05263,  0.19737,
+                -0.52256, -0.81391, -0.30075,  0.30639,
+            ]));
+        }
+
+        #[test]
+        fn test_invert_matrix2() {
+            let a = Matrix4x4::new([
+                 8., -5.,  9.,  2.,
+                 7.,  5.,  6.,  1.,
+                -6.,  0.,  9.,  6.,
+                -3.,  0., -9., -4.,
+            ]);
+            assert_eq!(a.inverse(), Matrix4x4::new([
+                -0.15385, -0.15385, -0.28205, -0.53846,
+                -0.07692,  0.12308,  0.02564,  0.03077,
+                 0.35897,  0.35897,  0.43590,  0.92308,
+                 -0.69231, -0.69231, -0.76923, -1.92308,
+            ]));
+        }
+
+        #[test]
+        fn test_invert_matrix3() {
+            let a = Matrix4x4::new([
+                 9.,  3.,  0.,  9.,
+                -5., -2., -6., -3.,
+                -4.,  9.,  6.,  4.,
+                -7.,  6.,  6.,  2.,
+            ]);
+            assert_eq!(a.inverse(), Matrix4x4::new([
+                -0.04074, -0.07778,  0.14444, -0.22222,
+                -0.07778,  0.03333,  0.36667, -0.33333,
+                -0.02901, -0.14630, -0.10926,  0.12963,
+                 0.17778,  0.06667, -0.26667,  0.33333,
+            ]));
+        }
+
+        #[test]
+        fn multiply_matrix_product_by_inverse() {
+            let a = Matrix4x4::new([
+                 3., -9.,  7.,  3.,
+                 3., -8.,  2., -9.,
+                -4.,  4.,  4.,  1.,
+                -6.,  5., -1.,  1.,
+            ]);
+            let b = Matrix4x4::new([
+                8.,  2.,  2.,  2., 
+                3., -1.,  7.,  0., 
+                7.,  0.,  5.,  4., 
+                6., -2.,  0.,  5., 
+            ]);
+            let c = a * b;
+            assert_eq!(c * b.inverse(), a);
         }
     }
 }
