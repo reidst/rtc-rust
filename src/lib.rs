@@ -1,12 +1,13 @@
-mod tuple {
+const EPSILON: f64 = 0.00001;
+
+fn equal(a: f64, b: f64) -> bool {
+    (a - b).abs() < EPSILON
+}
+
+pub mod tuple {
     use std::cmp::PartialEq;
     use std::ops::{Add, Sub, Neg, Mul, Div};
-
-    const EPSILON: f64 = 0.00001;
-
-    fn equal(a: f64, b: f64) -> bool {
-        (a - b).abs() < EPSILON
-    }
+    use super::equal;
 
     #[derive(Debug, Clone, Copy)]
     pub struct Tuple {
@@ -301,19 +302,15 @@ mod tuple {
     }
 }
 
-mod canvas {
+pub mod canvas {
     use std::cmp::PartialEq;
     use std::ops::{Add, Sub, Mul};
+    use super::equal;
 
-    const EPSILON: f64 = 0.00001;
     const CANVAS_BLANK_COLOR: Color = Color { red: 0., green: 0., blue: 0. };
 
-    fn equal(a: f64, b: f64) -> bool {
-        (a - b).abs() < EPSILON
-    }
-
     #[derive(Debug, Clone, Copy)]
-    struct Color {
+    pub struct Color {
         pub red: f64,
         pub green: f64,
         pub blue: f64,
@@ -376,7 +373,7 @@ mod canvas {
     }
 
     impl Color {
-        fn new(r: f64, g: f64, b: f64) -> Self {
+        pub fn new(r: f64, g: f64, b: f64) -> Self {
             Color {
                 red: r,
                 green: g,
@@ -386,14 +383,14 @@ mod canvas {
     }
 
 
-    struct Canvas {
+    pub struct Canvas {
         pub width: usize,
         pub height: usize,
         grid: Vec<Vec<Color>>,
     }
 
     impl Canvas {
-        fn new(width: usize, height: usize) -> Self {
+        pub fn new(width: usize, height: usize) -> Self {
             let mut grid: Vec<Vec<Color>> = Vec::with_capacity(height);
             for _rows in 0..height {
                 let mut row: Vec<Color> = Vec::with_capacity(width);
@@ -406,7 +403,7 @@ mod canvas {
             Canvas { width, height, grid }
         }
 
-        fn pixel_at(&self, x: usize, y: usize) -> Option<Color> {
+        pub fn pixel_at(&self, x: usize, y: usize) -> Option<Color> {
             let row = self.grid.get(y);
             if let Some(row) = row {
                 let item = row.get(x);
@@ -420,12 +417,37 @@ mod canvas {
             }
         }
 
-        fn write_pixel(&mut self, x: usize, y: usize, c: Color) {
-            todo!()
+        pub fn write_pixel(&mut self, x: usize, y: usize, c: Color) {
+            if (0..self.width).contains(&x) && (0..self.height).contains(&y) {
+                self.grid[y][x] = c;
+            }
         }
 
-        fn to_ppm(&self) -> String {
-            todo!()
+        pub fn to_ppm(&self) -> String {
+            let mut data = String::new();
+            data.push_str("P3\n");
+            data.push_str(format!("{} {}\n", self.width, self.height).as_str());
+            data.push_str("255\n");
+            for row in self.grid.iter() {
+                let mut line = String::new();
+                for color in row.iter() {
+                    for component in [color.red, color.green, color.blue] {
+                        let num = (component * 256.) as usize;
+                        let num = num.clamp(0, 255);
+                        let num_str = num.to_string() + " ";
+                        if line.len() + num_str.len() > 70 { // current line too long
+                            data.push_str(line.as_str().trim());
+                            data.push('\n');
+                            line = String::new();
+                        }
+                        line.push_str(num_str.as_str());
+                    }
+                }
+                data.push_str(line.as_str().trim());
+                data.push('\n');
+            }
+            
+            data
         }
     }
 
@@ -537,6 +559,416 @@ mod canvas {
             let canvas = Canvas::new(5, 3);
             let ppm = canvas.to_ppm();
             assert!(ppm.ends_with("\n"));
+        }
+    }
+}
+
+pub mod matrix {
+    use std::cmp::PartialEq;
+    use std::ops::Mul;
+    use crate::tuple::Tuple;
+
+    use super::equal;
+
+    #[derive(Debug, Copy, Clone)]
+    pub struct Matrix2x2 {
+        data: [[f64; 2]; 2],
+    }
+
+    impl PartialEq<Matrix2x2> for Matrix2x2 {
+        fn eq(&self, other: &Matrix2x2) -> bool {
+            equal(self.data[0][0], other.data[0][0]) &&
+            equal(self.data[0][1], other.data[0][1]) &&
+            equal(self.data[1][0], other.data[1][0]) &&
+            equal(self.data[1][1], other.data[1][1])
+        }
+    }
+
+    impl Matrix2x2 {
+        pub fn new(contents: [f64; 4]) -> Self {
+            Matrix2x2 { data: [
+                [contents[0], contents[1]],
+                [contents[2], contents[3]],
+            ] }
+        }
+
+        pub fn get(&self, row: usize, col: usize) -> Option<f64> {
+            if (0..2).contains(&row) && (0..2).contains(&col) {
+                Some(self.data[row][col])
+            } else {
+                None
+            }
+        }
+
+        pub fn determinant(&self) -> f64 {
+            self.data[0][0] * self.data[1][1] -
+            self.data[0][1] * self.data[1][0]
+        }
+    }
+
+    #[derive(Debug, Copy, Clone)]
+    pub struct Matrix3x3 {
+        data: [[f64; 3]; 3],
+    }
+
+    impl PartialEq<Matrix3x3> for Matrix3x3 {
+        fn eq(&self, other: &Matrix3x3) -> bool {
+            for r in 0..3 {
+                for c in 0..3 {
+                    if !equal(self.data[r][c], other.data[r][c]) {
+                        return false
+                    }
+                }
+            }
+            true
+        }
+    }
+
+    impl Matrix3x3 {
+        pub fn new(contents: [f64; 9]) -> Self {
+            let mut data = [[0f64; 3]; 3];
+            for (i, &v) in contents.iter().enumerate() {
+                data[i / 3][i % 3] = v;
+            }
+            Matrix3x3 { data }
+        }
+
+        pub fn get(&self, row: usize, col: usize) -> Option<f64> {
+            if (0..3).contains(&row) && (0..3).contains(&col) {
+                Some(self.data[row][col])
+            } else {
+                None
+            }
+        }
+
+        pub fn submatrix(&self, r: usize, c: usize) -> Option<Matrix2x2> {
+            if (0..3).contains(&r) && (0..3).contains(&c) {
+                let mut out = Matrix2x2::new([0.; 4]);
+                for row in 0..3 {
+                    if row == r { continue }
+                    let target_row = if row < r { row } else { row - 1 };
+                    for col in 0..3 {
+                        if col == c { continue }
+                        let target_col = if col < c { col } else { col - 1 };
+                        out.data[target_row][target_col] = self.data[row][col];
+                    }
+                }
+                Some(out)
+            } else {
+                None
+            }
+        }
+
+        pub fn minor(&self, r: usize, c: usize) -> Option<f64> {
+            self.submatrix(r, c).and_then(|sub| Some(sub.determinant()))
+        }
+    }
+
+    #[derive(Debug, Copy, Clone)]
+    pub struct Matrix4x4 {
+        data: [[f64; 4]; 4],
+    }
+
+    const IDENTITY: Matrix4x4 = Matrix4x4 { data: [
+        [1., 0., 0., 0.],
+        [0., 1., 0., 0.],
+        [0., 0., 1., 0.],
+        [0., 0., 0., 1.],
+    ]};
+
+    impl PartialEq<Matrix4x4> for Matrix4x4 {
+        fn eq(&self, other: &Matrix4x4) -> bool {
+            for r in 0..4 {
+                for c in 0..4 {
+                    if !equal(self.data[r][c], other.data[r][c]) {
+                        return false
+                    }
+                }
+            }
+            true
+        }
+    }
+
+    impl Mul<Matrix4x4> for Matrix4x4 {
+        type Output = Matrix4x4;
+
+        fn mul(self, rhs: Matrix4x4) -> Self::Output {
+            let mut out = Matrix4x4::new([0.; 16]);
+            for row in 0..4 {
+                for col in 0..4 {
+                    out.data[row][col] = 
+                        self.data[row][0] * rhs.data[0][col] +
+                        self.data[row][1] * rhs.data[1][col] +
+                        self.data[row][2] * rhs.data[2][col] +
+                        self.data[row][3] * rhs.data[3][col];
+                }
+            }
+            out
+        }
+    }
+
+    impl Mul<Tuple> for Matrix4x4 {
+        type Output = Tuple;
+
+        fn mul(self, rhs: Tuple) -> Self::Output {
+            let mut out = [0f64; 4];
+            let rhs = [rhs.x, rhs.y, rhs.z, rhs.w];
+            for row in 0..4 {
+                out[row] = 
+                    self.data[row][0] * rhs[0] +
+                    self.data[row][1] * rhs[1] +
+                    self.data[row][2] * rhs[2] +
+                    self.data[row][3] * rhs[3];
+            }
+            Tuple::new(out[0], out[1], out[2], out[3])
+        }
+    }
+
+    impl Matrix4x4 {
+        pub fn new(contents: [f64; 16]) -> Self {
+            let mut data = [[0f64; 4]; 4];
+            for (i, &v) in contents.iter().enumerate() {
+                data[i / 4][i % 4] = v;
+            }
+            Matrix4x4 { data }
+        }
+
+        pub fn get(&self, row: usize, col: usize) -> Option<f64> {
+            if (0..4).contains(&row) && (0..4).contains(&col) {
+                Some(self.data[row][col])
+            } else {
+                None
+            }
+        }
+
+        pub fn transpose(&self) -> Matrix4x4 {
+            let mut data = [[0f64; 4]; 4];
+            for row in 0..4 {
+                for col in 0..4 {
+                    data[col][row] = self.data[row][col];
+                }
+            }
+            Matrix4x4 { data }
+        }
+
+        pub fn submatrix(&self, r: usize, c: usize) -> Option<Matrix3x3> {
+            if (0..4).contains(&r) && (0..4).contains(&c) {
+                let mut out = Matrix3x3::new([0.; 9]);
+                for row in 0..4 {
+                    if row == r { continue }
+                    let target_row = if row < r { row } else { row - 1 };
+                    for col in 0..4 {
+                        if col == c { continue }
+                        let target_col = if col < c { col } else { col - 1 };
+                        out.data[target_row][target_col] = self.data[row][col];
+                    }
+                }
+                Some(out)
+            } else {
+                None
+            }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use crate::tuple::Tuple;
+
+        use super::*;
+
+        #[test]
+        fn test_construct_matrix4() {
+            let m = Matrix4x4::new([
+                 1.,   2.,   3.,   4.,
+                 5.5,  6.5,  7.5,  8.5,
+                 9.,  10.,  11.,  12.,
+                13.5, 14.5, 15.5, 16.5,
+            ]);
+            assert_eq!(m.get(0, 0), Some(1.));
+            assert_eq!(m.get(0, 3), Some(4.));
+            assert_eq!(m.get(1, 0), Some(5.5));
+            assert_eq!(m.get(1, 2), Some(7.5));
+            assert_eq!(m.get(2, 2), Some(11.));
+            assert_eq!(m.get(3, 0), Some(13.5));
+            assert_eq!(m.get(3, 2), Some(15.5));
+        }
+
+        #[test]
+        fn test_construct_matrix2() {
+            let m = Matrix2x2::new([
+                -3.,  5.,
+                 1., -2.,
+            ]);
+            assert_eq!(m.get(0, 0), Some(-3.));
+            assert_eq!(m.get(0, 1), Some(5.));
+            assert_eq!(m.get(1, 0), Some(1.));
+            assert_eq!(m.get(1, 1), Some(-2.));
+        }
+
+        #[test]
+        fn test_construct_matrix3() {
+            let m = Matrix3x3::new([
+                -3.,  5.,  0.,
+                 1., -2., -7.,
+                 0.,  1.,  1.,
+            ]);
+            assert_eq!(m.get(0, 0), Some(-3.));
+            assert_eq!(m.get(1, 1), Some(-2.));
+            assert_eq!(m.get(2, 2), Some(1.));
+        }
+
+        #[test]
+        fn test_matrix_equality() {
+            let a = Matrix4x4::new([
+                1., 2., 3., 4.,
+                5., 6., 7., 8.,
+                9., 8., 7., 6.,
+                5., 4., 3., 2.,
+            ]);
+            let b = Matrix4x4::new([
+                1., 2., 3., 4.,
+                5., 6., 7., 8.,
+                9., 8., 7., 6.,
+                5., 4., 3., 2.,
+            ]);
+            assert_eq!(a, b);
+        }
+
+        #[test]
+        fn test_matrix_inequality() {
+            let a = Matrix4x4::new([
+                1., 2., 3., 4.,
+                5., 6., 7., 8.,
+                9., 8., 7., 6.,
+                5., 4., 3., 2.,
+            ]);
+            let b = Matrix4x4::new([
+                2., 3., 4., 5.,
+                6., 7., 8., 9.,
+                8., 7., 6., 5.,
+                4., 3., 2., 1.,
+            ]);
+            assert_ne!(a, b);
+        }
+
+        #[test]
+        fn test_matrix_multiplication() {
+            let a = Matrix4x4::new([
+                1., 2., 3., 4.,
+                5., 6., 7., 8.,
+                9., 8., 7., 6.,
+                5., 4., 3., 2.,
+            ]);
+            let b = Matrix4x4::new([
+                -2., 1., 2.,  3.,
+                 3., 2., 1., -1.,
+                 4., 3., 6.,  5.,
+                 1., 2., 7.,  8.,
+            ]);
+            assert_eq!(a * b, Matrix4x4::new([
+                20., 22.,  50.,  48.,
+                44., 54., 114., 108.,
+                40., 58., 110., 102.,
+                16., 26.,  46.,  42.,
+            ]));
+        }
+
+        #[test]
+        fn test_matrix_tuple_multiplication() {
+            let a = Matrix4x4::new([
+                1., 2., 3., 4.,
+                2., 4., 4., 2.,
+                8., 6., 4., 1.,
+                0., 0., 0., 1.,
+            ]);
+            let b = Tuple::new(1., 2., 3., 1.);
+            assert_eq!(a * b, Tuple::new(18., 24., 33., 1.));
+        }
+
+        #[test]
+        fn test_matrix_identity_multiplication() {
+            let a = Matrix4x4::new([
+                0., 1.,  2.,  4.,
+                1., 2.,  4.,  8.,
+                2., 4.,  8., 16.,
+                4., 8., 16., 32.,
+            ]);
+            assert_eq!(a * IDENTITY, a);
+        }
+
+        #[test]
+        fn test_transpose_matrix() {
+            let a = Matrix4x4::new([
+                0., 9., 3., 0.,
+                9., 8., 0., 8.,
+                1., 8., 5., 3.,
+                0., 0., 5., 8.,
+            ]);
+            assert_eq!(a.transpose(), Matrix4x4::new([
+                0., 9., 1., 0.,
+                9., 8., 8., 0.,
+                3., 0., 5., 5.,
+                0., 8., 3., 8.,
+            ]));
+        }
+
+        #[test]
+        fn test_transpose_identity_matrix() {
+            let a = IDENTITY.transpose();
+            assert_eq!(a, IDENTITY);
+        }
+
+        #[test]
+        fn test_determinant2() {
+            let a = Matrix2x2::new([
+                 1., 5.,
+                -3., 2.,
+            ]);
+            assert_eq!(a.determinant(), 17.);
+        }
+
+        #[test]
+        fn test_submatrix3() {
+            let a = Matrix3x3::new([
+                 1., 5.,  0.,
+                -3., 2.,  7.,
+                 0., 6., -3.,
+            ]);
+            assert_eq!(a.submatrix(0, 2), Some(Matrix2x2::new([
+                -3., 2.,
+                 0., 6.,
+            ])));
+        }
+
+        #[test]
+        fn test_submatrix4() {
+            let a = Matrix4x4::new([
+                -6., 1.,  1., 6.,
+                -8., 5.,  8., 6.,
+                -1., 0.,  8., 2.,
+                -7., 1., -1., 1.,
+            ]);
+            assert_eq!(a.submatrix(2, 1), Some(Matrix3x3::new([
+                -6.,  1., 6.,
+                -8.,  8., 6.,
+                -7., -1., 1.,
+            ])));
+        }
+
+        #[test]
+        fn test_minor3() {
+            let a = Matrix3x3::new([
+                3.,  5.,  0.,
+                2., -1., -7.,
+                6., -1.,  5.,
+            ]);
+            // let Some(b) = a.submatrix(1, 0);
+            let b = match a.submatrix(1, 0) {
+                Some(sub) => sub,
+                None => panic!("a.submatrix(1, 0) should exist but does not")
+            };
+            assert_eq!(b.determinant(), 25.);
+            assert_eq!(a.minor(1, 0), Some(25.));
         }
     }
 }
