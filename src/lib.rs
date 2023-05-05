@@ -143,6 +143,12 @@ pub mod tuple {
                 self.x * other.y - self.y * other.x,
             )
         }
+
+        pub fn reflect(&self, normal: Tuple) -> Tuple {
+            assert!(self.is_vector(), "only vectors can be reflected");
+            assert!(normal.is_vector(), "a valid normal must be a vector");
+            self.to_owned() - normal * 2. * self.dot(normal)
+        }
     }
     #[cfg(test)]
     mod tests {
@@ -1477,7 +1483,7 @@ pub mod intersection {
         }
     }
 
-    #[derive(Debug, Copy, Clone)]
+    #[derive(Debug, Copy, Clone, PartialEq)]
     pub struct Sphere {
         pub transform: Transform,
         pub material: Material,
@@ -1518,6 +1524,14 @@ pub mod intersection {
 
         pub fn chain_transform(&mut self, trans: Transform) {
             self.set_transform(self.transform * trans);
+        }
+
+        pub fn normal_at(&self, world_point: Tuple) -> Tuple {
+            let object_point = self.transform.inverse() * world_point;
+            let object_normal = object_point - Tuple::point(0., 0., 0.);
+            let mut world_normal = self.transform.inverse().transpose() * object_normal;
+            world_normal.w = 0.;
+            world_normal.normalize()
         }
     }
 
@@ -1754,27 +1768,8 @@ pub mod intersection {
 pub mod shading {
     use crate::canvas::Color;
     use crate::tuple::Tuple;
-    use crate::intersection::Sphere;
 
-    impl Sphere {
-        pub fn normal_at(&self, world_point: Tuple) -> Tuple {
-            let object_point = self.transform.inverse() * world_point;
-            let object_normal = object_point - Tuple::point(0., 0., 0.);
-            let mut world_normal = self.transform.inverse().transpose() * object_normal;
-            world_normal.w = 0.;
-            world_normal.normalize()
-        }
-    }
-
-    impl Tuple {
-        pub fn reflect(&self, normal: Tuple) -> Tuple {
-            assert!(self.is_vector(), "only vectors can be reflected");
-            assert!(normal.is_vector(), "a valid normal must be a vector");
-            self.to_owned() - normal * 2. * self.dot(normal)
-        }
-    }
-
-    #[derive(Debug, Copy, Clone)]
+    #[derive(Debug, Copy, Clone, PartialEq)]
     pub struct PointLight {
         pub position: Tuple,
         pub intensity: Color,
@@ -2011,6 +2006,88 @@ pub mod shading {
             let light = PointLight::new(Tuple::point(0., 0., 10.), Color::new(1., 1., 1.));
             let result = lighting(m, light, position, eyev, normalv);
             assert_eq!(result, Color::new(0.1, 0.1, 0.1));
+        }
+    }
+}
+
+pub mod scene {
+    use crate::shading::PointLight;
+    use crate::intersection::{Sphere, Intersection, Ray};
+    use crate::transformation::Transform;
+    use crate::tuple::Tuple;
+    use crate::canvas::Color;
+
+    #[derive(Debug)]
+    pub struct World {
+        pub light: Option<PointLight>,
+        pub objects: Vec<Sphere>,
+    }
+
+    impl World {
+        pub fn empty() -> Self {
+            World { light: None, objects: vec![] }
+        }
+
+        pub fn default() -> Self {
+            let light = PointLight {
+                position: Tuple::point(-10., 10., -10.),
+                intensity: Color::new(1., 1., 1.),
+            };
+            let mut s1 = Sphere::new();
+            s1.material.color = Color::new(0.8, 1., 0.6);
+            s1.material.diffuse = 0.7;
+            s1.material.specular = 0.2;
+            let mut s2 = Sphere::new();
+            s2.transform = Transform::scaling(0.5, 0.5, 0.5);
+            World {
+                light: Some(light),
+                objects: vec![s1, s2],
+            }
+        }
+
+        pub fn intersect(&self, ray: Ray) -> Vec<Intersection> {
+            todo!()
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use crate::{transformation::Transform, intersection::Ray};
+
+        use super::*;
+
+        #[test]
+        fn test_create_world() {
+            let w = World::empty();
+            assert_eq!(w.objects.len(), 0);
+            assert_eq!(w.light, None);
+        }
+
+        #[test]
+        fn test_default_world() {
+            let light = PointLight::new(Tuple::point(-10., 10., -10.), Color::new(1., 1., 1.));
+            let mut s1 = Sphere::new();
+            s1.material.color = Color::new(0.8, 1., 0.6);
+            s1.material.diffuse = 0.7;
+            s1.material.specular = 0.2;
+            let mut s2 = Sphere::new();
+            s2.transform = Transform::scaling(0.5, 0.5, 0.5);
+            let w = World::default();
+            assert_eq!(w.light, Some(light));
+            assert!(w.objects.contains(&s1));
+            assert!(w.objects.contains(&s2));
+        }
+
+        #[test]
+        fn test_intersect_world_with_ray() {
+            let w = World::default();
+            let r = Ray::new(Tuple::point(0., 0., -5.), Tuple::vector(0., 0., 1.));
+            let xs = w.intersect(r);
+            assert_eq!(xs.len(), 4);
+            assert_eq!(xs[0].t, 4.);
+            assert_eq!(xs[1].t, 4.5);
+            assert_eq!(xs[2].t, 5.5);
+            assert_eq!(xs[3].t, 6.);
         }
     }
 }
