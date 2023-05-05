@@ -409,18 +409,26 @@ pub mod canvas {
             Canvas { width, height, grid }
         }
 
-        pub fn pixel_at(&self, x: usize, y: usize) -> Option<Color> {
-            let row = self.grid.get(y);
-            if let Some(row) = row {
-                let item = row.get(x);
-                if let Some(item) = item {
-                    Some(*item)
-                } else {
-                    None
-                }
-            } else {
-                None
+        fn bounds_check(&self, x: usize, y: usize) {
+            if x >= self.width {
+                panic!(
+                    "Illegal canvas x coordinate {}: the canvas width is {}",
+                    x,
+                    self.width,
+                )
             }
+            if y >= self.height {
+                panic!(
+                    "Illegal canvas y coordinate {}: the canvas height is {}",
+                    y,
+                    self.height,
+                )
+            }
+        }
+
+        pub fn pixel_at(&self, x: usize, y: usize) -> Color {
+            self.bounds_check(x, y);
+            self.grid[y][x]
         }
 
         pub fn write_pixel(&mut self, x: usize, y: usize, c: Color) {
@@ -503,7 +511,7 @@ pub mod canvas {
             assert_eq!(canvas.height, 20);
             for i in 0..canvas.width {
                 for j in 0..canvas.height {
-                    assert_eq!(canvas.pixel_at(i, j), Some(Color::new(0.,0.,0.)));
+                    assert_eq!(canvas.pixel_at(i, j), Color::new(0.,0.,0.));
                 }
             }
         }
@@ -513,7 +521,7 @@ pub mod canvas {
             let mut canvas = Canvas::new(10, 20);
             let red = Color::new(1., 0., 0.);
             canvas.write_pixel(2, 3, red);
-            assert_eq!(canvas.pixel_at(2, 3), Some(red));
+            assert_eq!(canvas.pixel_at(2, 3), red);
         }
 
         #[test]
@@ -1192,6 +1200,10 @@ pub mod transformation {
     }
 
     impl Transform {
+        pub fn from(mat: Matrix4x4) -> Self {
+            Transform { mat }
+        }
+
         pub fn identity() -> Self {
             Transform { mat: Matrix4x4::identity() }
         }
@@ -1256,32 +1268,6 @@ pub mod transformation {
 
         pub fn transpose(&self) -> Self {
             Transform { mat: self.mat.transpose() }
-        }
-
-        // in-place variants of transformations for functional chaining
-
-        pub fn translation_ip(self, x: f64, y: f64, z: f64) -> Self {
-            self * Transform::translation(x, y, z)
-        }
-
-        pub fn scaling_ip(self, x: f64, y: f64, z: f64) -> Self {
-            self * Transform::scaling(x, y, z)
-        }
-
-        pub fn rotation_x_ip(self, rad: f64) -> Self {
-            self * Transform::rotation_x(rad)
-        }
-
-        pub fn rotation_y_ip(self, rad: f64) -> Self {
-            self * Transform::rotation_y(rad)
-        }
-
-        pub fn rotation_z_ip(self, rad: f64) -> Self {
-            self * Transform::rotation_z(rad)
-        }
-
-        pub fn shearing_ip(self, xy: f64, xz: f64, yx: f64, yz: f64, zx: f64, zy: f64) -> Self {
-            self * Transform::shearing(xy, xz, yx, yz, zx, zy)
         }
     }
 
@@ -1552,19 +1538,19 @@ pub mod intersection {
         fn new(t: f64, object: &'a Sphere) -> Self {
             Intersection { t, object }
         }
-
-        pub fn hit(intersections: Vec<Self>) -> Option<Self> {
-            let mut hit = None;
-            for i in intersections {
-                if i.t < 0. { continue }
-                match hit {
-                    None => hit = Some(i),
-                    Some(h) if i.t < h.t => hit = Some(i),
-                    _ => {},
-                }
+    }
+    
+    pub fn hit(intersections: Vec<Intersection>) -> Option<Intersection> {
+        let mut hit = None;
+        for i in intersections {
+            if i.t < 0. { continue }
+            match hit {
+                None => hit = Some(i),
+                Some(h) if i.t < h.t => hit = Some(i),
+                _ => {},
             }
-            hit
         }
+        hit
     }
 
     #[cfg(test)]
@@ -1675,7 +1661,7 @@ pub mod intersection {
             let i1 = Intersection::new(1., &s);
             let i2 = Intersection::new(2., &s);
             let xs = vec![i2, i1];
-            let i = Intersection::hit(xs);
+            let i = hit(xs);
             assert_eq!(i, Some(i1));
         }
 
@@ -1685,7 +1671,7 @@ pub mod intersection {
             let i1 = Intersection::new(-1., &s);
             let i2 = Intersection::new(1., &s);
             let xs = vec![i2, i1];
-            let i = Intersection::hit(xs);
+            let i = hit(xs);
             assert_eq!(i, Some(i2));
         }
 
@@ -1695,7 +1681,7 @@ pub mod intersection {
             let i1 = Intersection::new(-2., &s);
             let i2 = Intersection::new(-1., &s);
             let xs = vec![i2, i1];
-            let i = Intersection::hit(xs);
+            let i = hit(xs);
             assert_eq!(i, None);
         }
 
@@ -1707,7 +1693,7 @@ pub mod intersection {
             let i3 = Intersection::new(-3., &s);
             let i4 = Intersection::new(2., &s);
             let xs = vec![i1, i2, i3, i4];
-            let i = Intersection::hit(xs);
+            let i = hit(xs);
             assert_eq!(i, Some(i4));
         }
 
@@ -1805,11 +1791,16 @@ pub mod shading {
 
     pub fn lighting(
         material: Material,
-        light: PointLight,
+        light: Option<PointLight>,
         point: Tuple,
         eyev: Tuple,
         normalv: Tuple
     ) -> Color {
+        // if no point light exists, then return black
+        let light = match light {
+            Some(l) => l,
+            None => return Color::new(0., 0., 0.),
+        };
         // calculate ambient light, which is independent of the eye or normal vectors
         let effective_color = material.color * light.intensity;
         let lightv = (light.position - point).normalize();
@@ -1960,7 +1951,7 @@ pub mod shading {
             let eyev = Tuple::vector(0., 0., -1.);
             let normalv = Tuple::vector(0., 0., -1.);
             let light = PointLight::new(Tuple::point(0., 0., -10.), Color::new(1., 1., 1.));
-            let result = lighting(m, light, position, eyev, normalv);
+            let result = lighting(m, Some(light), position, eyev, normalv);
             assert_eq!(result, Color::new(1.9, 1.9, 1.9));
         }
 
@@ -1971,7 +1962,7 @@ pub mod shading {
             let eyev = Tuple::vector(0., SQRT_2 / 2., SQRT_2 / 2.);
             let normalv = Tuple::vector(0., 0., -1.);
             let light = PointLight::new(Tuple::point(0., 0., -10.), Color::new(1., 1., 1.));
-            let result = lighting(m, light, position, eyev, normalv);
+            let result = lighting(m, Some(light), position, eyev, normalv);
             assert_eq!(result, Color::new(1., 1., 1.));
         }
 
@@ -1982,7 +1973,7 @@ pub mod shading {
             let eyev = Tuple::vector(0., 0., -1.);
             let normalv = Tuple::vector(0., 0., -1.);
             let light = PointLight::new(Tuple::point(0., 10., -10.), Color::new(1., 1., 1.));
-            let result = lighting(m, light, position, eyev, normalv);
+            let result = lighting(m, Some(light), position, eyev, normalv);
             assert_eq!(result, Color::new(0.7364, 0.7364, 0.7364));
         }
 
@@ -1993,7 +1984,7 @@ pub mod shading {
             let eyev = Tuple::vector(0., -SQRT_2 / 2., -SQRT_2 / 2.);
             let normalv = Tuple::vector(0., 0., -1.);
             let light = PointLight::new(Tuple::point(0., 10., -10.), Color::new(1., 1., 1.));
-            let result = lighting(m, light, position, eyev, normalv);
+            let result = lighting(m, Some(light), position, eyev, normalv);
             assert_eq!(result, Color::new(1.6364, 1.6364, 1.6364));
         }
 
@@ -2004,18 +1995,19 @@ pub mod shading {
             let eyev = Tuple::vector(0., 0., -1.);
             let normalv = Tuple::vector(0., 0., -1.);
             let light = PointLight::new(Tuple::point(0., 0., 10.), Color::new(1., 1., 1.));
-            let result = lighting(m, light, position, eyev, normalv);
+            let result = lighting(m, Some(light), position, eyev, normalv);
             assert_eq!(result, Color::new(0.1, 0.1, 0.1));
         }
     }
 }
 
 pub mod scene {
-    use crate::shading::PointLight;
-    use crate::intersection::{Sphere, Intersection, Ray};
+    use crate::matrix::Matrix4x4;
+    use crate::shading::{PointLight, lighting};
+    use crate::intersection::{Sphere, Intersection, Ray, hit};
     use crate::transformation::Transform;
     use crate::tuple::Tuple;
-    use crate::canvas::Color;
+    use crate::canvas::{Color, Canvas};
 
     #[derive(Debug)]
     pub struct World {
@@ -2046,15 +2038,158 @@ pub mod scene {
         }
 
         pub fn intersect(&self, ray: Ray) -> Vec<Intersection> {
-            todo!()
+            let mut intersections = vec![];
+            for obj in self.objects.iter() {
+                let xs = obj.intersect(ray);
+                intersections.extend(xs);
+            }
+            // sort_unstable_by used for optimization purposes
+            intersections.sort_unstable_by(|a, b| 
+                a.t.total_cmp(&b.t));
+            intersections
+        }
+
+        pub fn shade_hit(&self, comps: Computations) -> Color {
+            lighting(
+                comps.object.material,
+                self.light,
+                comps.point,
+                comps.eyev,
+                comps.normalv,
+            )
+        }
+
+        pub fn color_at(&self, ray: Ray) -> Color {
+            let ints = self.intersect(ray);
+            match hit(ints) {
+                // the ray hit something; use its color
+                Some(hit) => {
+                    let comps = Computations::prepare(hit, ray);
+                    self.shade_hit(comps)
+                },
+                // the ray did not hit anything, or objects were behind the ray
+                None => Color::new(0., 0., 0.),
+            }
+        }
+    }
+
+    pub struct Computations<'a> {
+        pub t: f64,
+        pub object: &'a Sphere,
+        pub point: Tuple,
+        pub eyev: Tuple,
+        pub normalv: Tuple,
+        pub inside: bool,
+    }
+
+    impl<'a> Computations<'a> {
+        pub fn prepare(int: Intersection<'a>, ray: Ray) -> Self {
+            let t = int.t;
+            let object = int.object;
+            let point = ray.position(t);
+            let eyev = -ray.direction;
+            let normalv = object.normal_at(point);
+            let inside = normalv.dot(eyev) < 0.;
+            let normalv = if inside { -normalv } else { normalv };
+            Computations { t, object, point, eyev, normalv, inside }
+        }
+    }
+
+    impl Transform {
+        pub fn view(from: Tuple, to: Tuple, up: Tuple) -> Transform {
+            assert!(from.is_point(), "a ViewTransform's `from` field must be a point");
+            assert!(to.is_point(), "a ViewTransform's `to` field must be a point");
+            assert!(up.is_vector(), "a ViewTransform's `up` field must be a vector");
+            let forward = (to - from).normalize();
+            let upn = up.normalize();
+            let left = forward.cross(upn);
+            let true_up = left.cross(forward);
+            let orientation = Transform::from(Matrix4x4::new([
+                    left.x,     left.y,     left.z, 0.,
+                 true_up.x,  true_up.y,  true_up.z, 0.,
+                -forward.x, -forward.y, -forward.z, 0.,
+                        0.,         0.,         0., 1.,
+            ]));
+            orientation * Transform::translation(-from.x, -from.y, -from.z)
+        }
+    }
+
+    pub struct Camera {
+        pub hsize: usize,
+        pub vsize: usize,
+        pub fov: f64,
+        pub transform: Transform,
+        pixel_size: f64,
+        half_width: f64,
+        half_height: f64,
+    }
+
+    impl Camera {
+        pub fn new(hsize: usize, vsize: usize, fov: f64) -> Self {
+            let transform = Transform::identity();
+            let half_view = (fov / 2.).tan();
+            let aspect = hsize as f64 / vsize as f64;
+            let (half_width, half_height) = if aspect >= 1. {
+                (half_view, half_view / aspect)
+            } else {
+                (half_view * aspect, half_view)
+            };
+            let pixel_size = (half_width * 2.) / hsize as f64;
+            Camera { hsize, vsize, fov, transform, pixel_size, half_width, half_height }
+        }
+
+        pub fn pixel_size(&self) -> f64 {
+            self.pixel_size
+        }
+
+        pub fn half_width(&self) -> f64 {
+            self.half_width
+        }
+
+        pub fn half_height(&self) -> f64 {
+            self.half_height
+        }
+
+        pub fn ray_for_pixel(&self, px: usize, py: usize) -> Ray {
+            // offset from the edge of the canvas to the pixel's center
+            let xoffset = (px as f64 + 0.5) * self.pixel_size;
+            let yoffset = (py as f64 + 0.5) * self.pixel_size;
+            // untransformed coordinates of the pixel in world space
+            let world_x = self.half_width - xoffset;
+            let world_y = self.half_height - yoffset;
+            // use the camera matrix to transform the canvas
+            // use this to compute the ray's direction
+            let inv_trans = self.transform.inverse();
+            let pixel = inv_trans * Tuple::point(world_x, world_y, -1.);
+            let origin = inv_trans * Tuple::point(0., 0., 0.);
+            let direction = (pixel - origin).normalize();
+            Ray::new(origin, direction)
+        }
+
+        pub fn render(&self, w: World) -> Canvas {
+            let mut image = Canvas::new(self.hsize, self.vsize);
+            for y in 0..self.vsize {
+                for x in 0..self.hsize {
+                    let ray = self.ray_for_pixel(x, y);
+                    let color = w.color_at(ray);
+                    image.write_pixel(x, y, color);
+                }
+            }
+            image
         }
     }
 
     #[cfg(test)]
     mod tests {
-        use crate::{transformation::Transform, intersection::Ray};
-
+        use std::ptr;
+        use crate::equal;
+        use crate::transformation::Transform;
+        use crate::intersection::Ray;
+        use crate::matrix::Matrix4x4;
         use super::*;
+
+        const PI: f64 = std::f64::consts::PI;
+        const SQRT_2: f64 = std::f64::consts::SQRT_2;
 
         #[test]
         fn test_create_world() {
@@ -2088,6 +2223,197 @@ pub mod scene {
             assert_eq!(xs[1].t, 4.5);
             assert_eq!(xs[2].t, 5.5);
             assert_eq!(xs[3].t, 6.);
+        }
+
+        #[test]
+        fn test_precompute_intersection_state() {
+            let r = Ray::new(Tuple::point(0., 0., -5.), Tuple::vector(0., 0., 1.));
+            let shape = Sphere::new();
+            let i = Intersection { t: 4., object: &shape };
+            let comps = Computations::prepare(i, r);
+            assert_eq!(comps.t, i.t);
+            assert!(ptr::eq(comps.object, i.object));
+            assert_eq!(comps.point, Tuple::point(0., 0., -1.));
+            assert_eq!(comps.eyev, Tuple::vector(0., 0., -1.));
+            assert_eq!(comps.normalv, Tuple::vector(0., 0., -1.));
+        }
+
+        #[test]
+        fn test_ray_hit_outside_object() {
+            let r = Ray::new(Tuple::point(0., 0., -5.), Tuple::vector(0., 0., 1.));
+            let shape = Sphere::new();
+            let i = Intersection { t: 4., object: &shape };
+            let comps = Computations::prepare(i, r);
+            assert_eq!(comps.inside, false);
+        }
+
+        #[test]
+        fn test_ray_hit_inside_object() {
+            let r = Ray::new(Tuple::point(0., 0., 0.), Tuple::vector(0., 0., 1.));
+            let shape = Sphere::new();
+            let i = Intersection { t: 1., object: &shape };
+            let comps = Computations::prepare(i, r);
+            assert_eq!(comps.point, Tuple::point(0., 0., 1.));
+            assert_eq!(comps.eyev, Tuple::vector(0., 0., -1.));
+            assert_eq!(comps.inside, true);
+            assert_eq!(comps.normalv, Tuple::vector(0., 0., -1.));
+        }
+
+        #[test]
+        fn test_shade_intersection() {
+            let w = World::default();
+            let r = Ray::new(Tuple::point(0., 0., -5.), Tuple::vector(0., 0., 1.));
+            let shape = &w.objects[0];
+            let i = Intersection { t: 4., object: shape };
+            let comps = Computations::prepare(i, r);
+            let c = w.shade_hit(comps);
+            assert_eq!(c, Color::new(0.38066, 0.47583, 0.2855));
+        }
+
+        #[test]
+        fn test_shade_intersection_from_inside() {
+            let mut w = World::default();
+            w.light = Some(PointLight::new(Tuple::point(0., 0.25, 0.), Color::new(1., 1., 1.)));
+            let r = Ray::new(Tuple::point(0., 0., 0.), Tuple::vector(0., 0., 1.));
+            let shape = &w.objects[1];
+            let i = Intersection { t: 0.5, object: shape };
+            let comps = Computations::prepare(i, r);
+            let c = w.shade_hit(comps);
+            assert_eq!(c, Color::new(0.90498, 0.90498, 0.90498));
+        }
+
+        #[test]
+        fn test_color_when_ray_misses() {
+            let w = World::default();
+            let r = Ray::new(Tuple::point(0., 0., -5.), Tuple::vector(0., 1., 0.));
+            let c = w.color_at(r);
+            assert_eq!(c, Color::new(0., 0., 0.));
+        }
+
+        #[test]
+        fn test_color_when_ray_hits() {
+            let w = World::default();
+            let r = Ray::new(Tuple::point(0., 0., -5.), Tuple::vector(0., 0., 1.));
+            let c = w.color_at(r);
+            assert_eq!(c, Color::new(0.38066, 0.47583, 0.2855));
+        }
+
+        #[test]
+        fn test_color_with_intersection_behind_ray() {
+            let mut w = World::default();
+            let inner_material_color = {    // bodgy mutable-pointer-management workaround
+                let outer = &mut w.objects[0];
+                outer.material.ambient = 1.;
+                let inner = &mut w.objects[1];
+                inner.material.ambient = 1.;
+
+                inner.material.color
+            };
+            let r = Ray::new(Tuple::point(0., 0., 0.75), Tuple::vector(0., 0., -1.));
+            let c = w.color_at(r);
+            assert_eq!(c, inner_material_color);
+        }
+
+        #[test]
+        fn test_transform_matrix_default_orientation() {
+            let from = Tuple::point(0., 0., 0.);
+            let to = Tuple::point(0., 0., -1.);
+            let up = Tuple::vector(0., 1., 0.);
+            let t = Transform::view(from, to, up);
+            assert_eq!(t, Transform::identity());
+        }
+
+        #[test]
+        fn test_view_transform_looking_pos_z() {
+            let from = Tuple::point(0., 0., 0.);
+            let to = Tuple::point(0., 0., 1.);
+            let up = Tuple::vector(0., 1., 0.);
+            let t = Transform::view(from, to, up);
+            assert_eq!(t, Transform::scaling(-1., 1., -1.));
+        }
+
+        #[test]
+        fn test_view_transform_moves_world() {
+            let from = Tuple::point(0., 0., 8.);
+            let to = Tuple::point(0., 0., 0.);
+            let up = Tuple::vector(0., 1., 0.);
+            let t = Transform::view(from, to, up);
+            assert_eq!(t, Transform::translation(0., 0., -8.));
+        }
+
+        #[test]
+        fn test_arbitrary_view_transform() {
+            let from = Tuple::point(1., 3., 2.);
+            let to = Tuple::point(4., -2., 8.);
+            let up = Tuple::vector(1., 1., 0.);
+            let t = Transform::view(from, to, up);
+            assert_eq!(t, Transform::from(Matrix4x4::new([
+                -0.50709, 0.50709,  0.67612, -2.36643,
+                 0.76772, 0.60609,  0.12122, -2.82843,
+                -0.35857, 0.59761, -0.71714,  0.00000,
+                 0.00000, 0.00000,  0.00000,  1.00000,
+            ])));
+        }
+
+        #[test]
+        fn test_create_camera() {
+            let hsize = 160;
+            let vsize = 120;
+            let fov = PI / 2.;
+            let c = Camera::new(hsize, vsize, fov);
+            assert_eq!(c.hsize, 160);
+            assert_eq!(c.vsize, 120);
+            assert_eq!(c.fov, PI / 2.);
+            assert_eq!(c.transform, Transform::identity());
+        }
+
+        #[test]
+        fn test_pixel_size_horizontal_canvas() {
+            let c = Camera::new(200, 125, PI / 2.);
+            assert!(equal(c.pixel_size(), 0.01));
+        }
+
+        #[test]
+        fn test_pixel_size_vertical_canvas() {
+            let c = Camera::new(125, 200, PI / 2.);
+            assert!(equal(c.pixel_size(), 0.01));
+        }
+
+        #[test]
+        fn test_ray_through_canvas_center() {
+            let c = Camera::new(201, 101, PI / 2.);
+            let r = c.ray_for_pixel(100, 50);
+            assert_eq!(r.origin, Tuple::point(0., 0., 0.));
+            assert_eq!(r.direction, Tuple::vector(0., 0., -1.));
+        }
+
+        #[test]
+        fn test_ray_through_canvas_corner() {
+            let c = Camera::new(201, 101, PI / 2.);
+            let r = c.ray_for_pixel(0, 0);
+            assert_eq!(r.origin, Tuple::point(0., 0., 0.));
+            assert_eq!(r.direction, Tuple::vector(0.66519, 0.33259, -0.66851));
+        }
+
+        #[test]
+        fn test_ray_through_transformed_canvas() {
+            let mut c = Camera::new(201, 101, PI / 2.);
+            c.transform = Transform::rotation_y(PI / 4.) * Transform::translation(0., -2., 5.);
+            let r = c.ray_for_pixel(100, 50);
+            assert_eq!(r.origin, Tuple::point(0., 2., -5.));
+            assert_eq!(r.direction, Tuple::vector(SQRT_2 / 2., 0., -SQRT_2 / 2.));
+        }
+
+        #[test]
+        fn test_render_world_with_camera() {
+            let w = World::default();
+            let mut c = Camera::new(11, 11, PI / 2.);
+            let from = Tuple::point(0., 0., -5.);
+            let to = Tuple::point(0., 0., 0.);
+            let up = Tuple::vector(0., 1., 0.);
+            c.transform = Transform::view(from, to, up);
+            let image = c.render(w);
+            assert_eq!(image.pixel_at(5, 5), Color::new(0.38066, 0.47583, 0.2855));
         }
     }
 }

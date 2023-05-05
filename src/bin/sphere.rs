@@ -3,7 +3,7 @@ use std::io::Write;
 use rtc_rust::shading::{PointLight, lighting};
 use rtc_rust::tuple::Tuple;
 use rtc_rust::canvas::{Canvas, Color};
-use rtc_rust::intersection::{Sphere, Ray, Intersection};
+use rtc_rust::intersection::{Sphere, Ray, hit};
 
 fn main() -> std::io::Result<()> {
     let ray_origin = Tuple::point(0., 0., -5.);
@@ -28,11 +28,11 @@ fn main() -> std::io::Result<()> {
             let position = Tuple::point(world_x, world_y, wall_z);
             let r = Ray::new(ray_origin, (position - ray_origin).normalize());
             let xs = sphere.intersect(r);
-            if let Some(hit) = Intersection::hit(xs) {
+            if let Some(hit) = hit(xs) {
                 let point = r.position(hit.t);
                 let normal = hit.object.normal_at(point);
                 let eye = -r.direction;
-                let color = lighting(hit.object.material, light, point, eye, normal);
+                let color = lighting(hit.object.material, Some(light), point, eye, normal);
                 canvas.write_pixel(x, y, color);
             }
         }

@@ -1,6 +1,6 @@
 use std::{fs, io::Write};
 
-use rtc_rust::{tuple::Tuple, canvas::{Canvas, Color}, intersection::{Sphere, Ray, Intersection}};
+use rtc_rust::{tuple::Tuple, canvas::{Canvas, Color}, intersection::{Sphere, Ray, hit}};
 
 fn main() -> std::io::Result<()> {
     let ray_origin = Tuple::point(0., 0., -5.);
@@ -20,7 +20,7 @@ fn main() -> std::io::Result<()> {
             let position = Tuple::point(world_x, world_y, wall_z);
             let r = Ray::new(ray_origin, (position - ray_origin).normalize());
             let xs = shape.intersect(r);
-            if let Some(_) = Intersection::hit(xs) {
+            if let Some(_) = hit(xs) {
                 let color = Color::new(x as f64 / canvas_pixels as f64, 0., y as f64 / canvas_pixels as f64);
                 canvas.write_pixel(x, y, color);
             }
